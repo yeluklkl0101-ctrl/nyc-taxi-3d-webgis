@@ -213,6 +213,7 @@
         
         let deckgl = null; 
         
+        
         const dateSelect = document.getElementById('date-selector');
         const clockDisplay = document.getElementById('clock-display');
         const slider = document.getElementById('time-slider');
@@ -230,7 +231,7 @@
             dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
         }
 
-        
+
         function loadDataForDate(dateStr) {
             currentDateStr = dateStr;
             const fileName = `./trips_${dateStr}.json`;
