@@ -2,148 +2,252 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>NYC Taxi Monthly Data</title>
+    <title>NYC Taxi + Gemini AI</title>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
     <style>
-        body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', monospace; overflow: hidden; }
+        body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         #container { width: 100vw; height: 100vh; }
         
-        /* 控制面板 */
+        /* === 原有控件样式保持不变 === */
         #control-panel {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            width: 80%; max-width: 600px;
-            background: rgba(10, 10, 10, 0.9);
+            position: absolute; top: 20px; left: 20px; /* 移到左上角，给AI腾位置 */
+            width: 300px;
+            background: rgba(10, 10, 10, 0.8);
             border: 1px solid rgba(255,255,255,0.2);
             border-radius: 12px;
-            padding: 20px;
+            padding: 15px;
             z-index: 10;
             color: white;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+        select { background: #222; color: #fff; border: 1px solid #444; width: 100%; margin-bottom: 10px; padding: 5px; }
+        #clock-display { font-size: 20px; font-weight: bold; color: #00ffcc; margin-bottom: 10px; }
+        button { background: #eee; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; }
+        input[type=range] { width: 100%; accent-color: #00ffcc; }
+
+        /* === 🤖 新增：AI 对话面板样式 === */
+        #ai-panel {
+            position: absolute; 
+            bottom: 30px; 
+            left: 50%; 
+            transform: translateX(-50%); /* 居中 */
+            width: 400px;
+            max-height: 500px;
+            background: rgba(20, 25, 30, 0.95); /* 深色磨砂玻璃 */
+            backdrop-filter: blur(10px);
+            border: 1px solid #00ffcc;
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.2);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.3s ease;
         }
 
-        /* 顶部日期和时间显示 */
-        .header-row {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px;
+        /* 聊天记录区域 */
+        #chat-history {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            max-height: 300px;
+            font-size: 14px;
+            color: #ddd;
+            display: none; /* 默认隐藏历史，只显示输入框 */
         }
-
-        /* 日期选择器样式 */
-        select {
-            background: #222; color: #fff; border: 1px solid #444;
-            padding: 5px 10px; font-size: 16px; border-radius: 4px; cursor: pointer;
-        }
-
-        /* 大时钟 */
-        #clock-display {
-            font-size: 28px; font-weight: bold; color: #00ffcc;
-            text-shadow: 0 0 8px rgba(0,255,204,0.3);
-        }
-
-        /* 播放控制区 */
-        .play-row { display: flex; align-items: center; gap: 15px; }
-        button {
-            background: #eee; border: none; padding: 6px 15px; border-radius: 4px;
-            font-weight: bold; cursor: pointer;
-        }
-        button:hover { background: #00ffcc; }
         
-        #slider-container { flex-grow: 1; display: flex; align-items: center; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: #00ffcc; }
+        /* 消息气泡 */
+        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; max-width: 80%; line-height: 1.4; }
+        .msg.user { background: #005f4c; color: white; align-self: flex-end; margin-left: auto; text-align: right;}
+        .msg.ai { background: #333; color: #00ffcc; align-self: flex-start; border: 1px solid #444; }
+
+        /* 输入框区域 */
+        #input-area {
+            display: flex;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        #ai-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: white;
+            outline: none;
+            font-size: 15px;
+        }
+        #send-btn {
+            background: transparent;
+            color: #00ffcc;
+            border: 1px solid #00ffcc;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 10px;
+            transition: 0.2s;
+        }
+        #send-btn:hover { background: #00ffcc; color: black; }
         
-        #status { font-size: 12px; color: #888; text-align: center; margin-top: 5px; }
+        /* 加载动画 */
+        .typing { font-style: italic; color: #888; font-size: 12px; margin-left: 15px; display: none; }
     </style>
+    
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
 </head>
 <body>
 
     <div id="container"></div>
 
     <div id="control-panel">
-        <div class="header-row">
-            <div>
-                <label>📅 选择日期: </label>
-                <select id="date-selector"></select>
-            </div>
-            <div id="clock-display">2025.07.01 00:00</div>
-        </div>
-
-        <div class="play-row">
+        <div id="clock-display">2025.07.01 00:00</div>
+        <select id="date-selector"></select>
+        <div style="display:flex; gap:10px; align-items:center;">
             <button id="play-btn">⏸</button>
-            <div id="slider-container">
-                <input type="range" id="time-slider" min="0" max="86400" step="10" value="0">
-            </div>
+            <input type="range" id="time-slider" min="0" max="86400" step="10" value="0">
         </div>
-        <div id="status">准备就绪</div>
+        <div style="font-size:12px; color:#aaa; margin-top:5px;">拖动滑块查看不同时间段</div>
+    </div>
+
+    <div id="ai-panel">
+        <div id="chat-history">
+            <div class="msg ai">你好！我是纽约交通 AI 助手。你可以问我：<br>“现在的交通状况如何？”<br>“哪个区域最拥堵？”</div>
+        </div>
+        <div class="typing" id="typing-indicator">Gemini 正在思考...</div>
+        <div id="input-area">
+            <input type="text" id="ai-input" placeholder="✨ 询问 AI 关于当前的交通数据..." autocomplete="off">
+            <button id="send-btn">发送</button>
+        </div>
     </div>
 
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
     <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
 
-    <script>
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        // ============================================
+        // 🔑在此处填入你的 API KEY (注意安全)
+        // ============================================
+        const API_KEY = "AIzaSyBD5-mYSR2G-k2-5KsnKoab-ulS3LwR5iQ"; 
+        // ============================================
+
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        // --- AI 交互逻辑 ---
+        const chatHistory = document.getElementById('chat-history');
+        const aiInput = document.getElementById('ai-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const aiPanel = document.getElementById('ai-panel');
+
+        // 发送消息
+        async function askGemini() {
+            const prompt = aiInput.value.trim();
+            if (!prompt) return;
+
+            // 1. 显示用户提问
+            chatHistory.style.display = "block"; // 展开聊天记录
+            addMessage(prompt, 'user');
+            aiInput.value = '';
+            typingIndicator.style.display = 'block';
+
+            // 2. 构造上下文提示词 (让 AI 知道它是个交通专家)
+            // 这里我们把当前的日期和时间传给 AI，让它假装在分析
+            const context = `你是一个专业的 WebGIS 交通分析助手。
+            当前展示的数据是 2025年7月纽约出租车轨迹数据。
+            当前画面显示的时间是：${document.getElementById('clock-display').innerText}。
+            
+            如果用户问交通状况，请根据当前时间（早高峰、晚高峰、深夜等）进行合理的推测和回答。
+            回答要简短、专业，不要超过 100 字。
+            
+            用户的问题是：${prompt}`;
+
+            try {
+                // 3. 调用 API
+                const result = await model.generateContent(context);
+                const response = await result.response;
+                const text = response.text();
+                
+                // 4. 显示 AI 回答
+                typingIndicator.style.display = 'none';
+                addMessage(text, 'ai');
+            } catch (error) {
+                console.error(error);
+                typingIndicator.style.display = 'none';
+                addMessage("❌ 连接 AI 失败，请检查 API Key 或网络。", 'ai');
+            }
+        }
+
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `msg ${sender}`;
+            div.innerHTML = text.replace(/\n/g, '<br>'); // 支持换行
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight; // 滚动到底部
+        }
+
+        // 绑定事件
+        sendBtn.addEventListener('click', askGemini);
+        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
+        
+        // 点击输入框时自动展开历史
+        aiInput.addEventListener('focus', () => { chatHistory.style.display = "block"; });
+
+
+        // --- 以下是原有的地图逻辑 (不需要大改) ---
         const {DeckGL, ArcLayer, DataFilterExtension} = deck;
         const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
 
         // 全局变量
-        let currentDateStr = "2025-07-01"; // 当前选中的日期字符串
-        let currentTime = 0;               // 当前秒数 (0-86400)
+        let currentDateStr = "2025-07-01"; 
+        let currentTime = 0;              
         let isPlaying = true;
-        let animationSpeed = 10;           // 播放速度
-        const timeWindow = 3600;           // 轨迹拖尾长度
+        let animationSpeed = 10;
+        const timeWindow = 3600;
         
-        let deckgl = null; // DeckGL 实例
+        let deckgl = null; 
         
-        // DOM 元素
         const dateSelect = document.getElementById('date-selector');
         const clockDisplay = document.getElementById('clock-display');
         const slider = document.getElementById('time-slider');
         const playBtn = document.getElementById('play-btn');
-        const statusEl = document.getElementById('status');
 
-        // 🟢 1. 初始化日期下拉菜单 (生成 7月1日到7月31日)
         function initDateSelector() {
             for (let i = 1; i <= 31; i++) {
                 const dayStr = i < 10 ? `0${i}` : `${i}`;
                 const val = `2025-07-${dayStr}`;
                 const option = document.createElement("option");
                 option.value = val;
-                option.text = val; // 显示文本
+                option.text = val;
                 dateSelect.appendChild(option);
             }
-            
-            // 监听日期变化
-            dateSelect.addEventListener('change', (e) => {
-                loadDataForDate(e.target.value);
-            });
+            dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
         }
 
-        // 🟢 2. 加载特定日期的数据
         function loadDataForDate(dateStr) {
             currentDateStr = dateStr;
-            statusEl.innerText = `正在下载 ${dateStr} 的数据...`;
-            
-            // 构造文件名: trips_2025-07-10.json
             const fileName = `./trips_${dateStr}.json`;
-
             fetch(fileName)
                 .then(res => {
-                    if(!res.ok) throw new Error("文件不存在 (请检查 python 脚本是否生成了该日期)");
+                    if(!res.ok) throw new Error("File not found");
                     return res.json();
                 })
                 .then(data => {
-                    statusEl.innerText = `✅ ${dateStr}: 加载了 ${data.length} 条轨迹`;
                     updateDeckGL(data);
                 })
                 .catch(err => {
                     console.error(err);
-                    statusEl.innerText = `❌ 加载失败: ${fileName} 未找到`;
-                    statusEl.style.color = 'red';
-                    // 如果失败，尝试清空地图
-                    updateDeckGL([]);
+                    updateDeckGL([]); 
                 });
         }
 
-        // 🟢 3. 更新或初始化 DeckGL
         function updateDeckGL(data) {
-            // 如果是第一次，创建实例
             if (!deckgl) {
                 deckgl = new DeckGL({
                     container: 'container',
@@ -155,10 +259,9 @@
                     controller: true,
                     layers: []
                 });
-                requestAnimationFrame(animate); // 启动动画循环
+                requestAnimationFrame(animate); 
             }
 
-            // 更新图层数据
             const layer = new ArcLayer({
                 id: 'taxi-arcs',
                 data: data,
@@ -176,7 +279,6 @@
             deckgl.setProps({ layers: [layer] });
         }
 
-        // 🟢 4. 动画循环
         function animate() {
             if (isPlaying) {
                 currentTime += animationSpeed;
@@ -184,12 +286,9 @@
                 slider.value = currentTime;
             }
             
-            // 更新 UI 时钟：组合 "日期" + "时间"
             const timeStr = formatTime(currentTime);
-            // 格式: 2025.07.01 08:30
             clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${timeStr}`;
 
-            // 更新 DeckGL 过滤范围
             if (deckgl && deckgl.props.layers.length > 0) {
                  const currentLayer = deckgl.props.layers[0].clone({
                      filterRange: [currentTime, currentTime + timeWindow]
@@ -200,18 +299,15 @@
             requestAnimationFrame(animate);
         }
 
-        // 辅助: 秒转时间
         function formatTime(seconds) {
             const h = Math.floor(seconds / 3600);
             const m = Math.floor((seconds % 3600) / 60);
             return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
 
-        // 交互逻辑
         playBtn.onclick = () => { isPlaying = !isPlaying; playBtn.innerText = isPlaying ? "⏸" : "▶"; };
         slider.addEventListener('input', (e) => {
             currentTime = parseInt(e.target.value);
-            // 拖拽时手动触发一次更新，防止暂停时画面不动
             if (!isPlaying && deckgl) {
                  const currentLayer = deckgl.props.layers[0].clone({
                      filterRange: [currentTime, currentTime + timeWindow]
@@ -221,10 +317,8 @@
             }
         });
 
-        // 🚀 启动！
         initDateSelector();
-        loadDataForDate(currentDateStr); // 默认加载 7月1日
-
+        loadDataForDate(currentDateStr); 
     </script>
 </body>
 </html>
