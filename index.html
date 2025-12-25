@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>NYC Taxi Monthly Data</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', monospace; overflow: hidden; }
+        #container { width: 100vw; height: 100vh; }
+        
+        /* 控制面板 */
+        #control-panel {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 80%; max-width: 600px;
+            background: rgba(10, 10, 10, 0.9);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 10;
+            color: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        /* 顶部日期和时间显示 */
+        .header-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px;
+        }
+
+        /* 日期选择器样式 */
+        select {
+            background: #222; color: #fff; border: 1px solid #444;
+            padding: 5px 10px; font-size: 16px; border-radius: 4px; cursor: pointer;
+        }
+
+        /* 大时钟 */
+        #clock-display {
+            font-size: 28px; font-weight: bold; color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0,255,204,0.3);
+        }
+
+        /* 播放控制区 */
+        .play-row { display: flex; align-items: center; gap: 15px; }
+        button {
+            background: #eee; border: none; padding: 6px 15px; border-radius: 4px;
+            font-weight: bold; cursor: pointer;
+        }
+        button:hover { background: #00ffcc; }
+        
+        #slider-container { flex-grow: 1; display: flex; align-items: center; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #00ffcc; }
+        
+        #status { font-size: 12px; color: #888; text-align: center; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="container"></div>
+
+    <div id="control-panel">
+        <div class="header-row">
+            <div>
+                <label>📅 选择日期: </label>
+                <select id="date-selector"></select>
+            </div>
+            <div id="clock-display">2025.07.01 00:00</div>
+        </div>
+
+        <div class="play-row">
+            <button id="play-btn">⏸</button>
+            <div id="slider-container">
+                <input type="range" id="time-slider" min="0" max="86400" step="10" value="0">
+            </div>
+        </div>
+        <div id="status">准备就绪</div>
+    </div>
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
+
+    <script>
+        const {DeckGL, ArcLayer, DataFilterExtension} = deck;
+        const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
+
+        // 全局变量
+        let currentDateStr = "2025-07-01"; // 当前选中的日期字符串
+        let currentTime = 0;               // 当前秒数 (0-86400)
+        let isPlaying = true;
+        let animationSpeed = 10;           // 播放速度
+        const timeWindow = 3600;           // 轨迹拖尾长度
+        
+        let deckgl = null; // DeckGL 实例
+        
+        // DOM 元素
+        const dateSelect = document.getElementById('date-selector');
+        const clockDisplay = document.getElementById('clock-display');
+        const slider = document.getElementById('time-slider');
+        const playBtn = document.getElementById('play-btn');
+        const statusEl = document.getElementById('status');
+
+        // 🟢 1. 初始化日期下拉菜单 (生成 7月1日到7月31日)
+        function initDateSelector() {
+            for (let i = 1; i <= 31; i++) {
+                const dayStr = i < 10 ? `0${i}` : `${i}`;
+                const val = `2025-07-${dayStr}`;
+                const option = document.createElement("option");
+                option.value = val;
+                option.text = val; // 显示文本
+                dateSelect.appendChild(option);
+            }
+            
+            // 监听日期变化
+            dateSelect.addEventListener('change', (e) => {
+                loadDataForDate(e.target.value);
+            });
+        }
+
+        // 🟢 2. 加载特定日期的数据
+        function loadDataForDate(dateStr) {
+            currentDateStr = dateStr;
+            statusEl.innerText = `正在下载 ${dateStr} 的数据...`;
+            
+            // 构造文件名: trips_2025-07-10.json
+            const fileName = `./trips_${dateStr}.json`;
+
+            fetch(fileName)
+                .then(res => {
+                    if(!res.ok) throw new Error("文件不存在 (请检查 python 脚本是否生成了该日期)");
+                    return res.json();
+                })
+                .then(data => {
+                    statusEl.innerText = `✅ ${dateStr}: 加载了 ${data.length} 条轨迹`;
+                    updateDeckGL(data);
+                })
+                .catch(err => {
+                    console.error(err);
+                    statusEl.innerText = `❌ 加载失败: ${fileName} 未找到`;
+                    statusEl.style.color = 'red';
+                    // 如果失败，尝试清空地图
+                    updateDeckGL([]);
+                });
+        }
+
+        // 🟢 3. 更新或初始化 DeckGL
+        function updateDeckGL(data) {
+            // 如果是第一次，创建实例
+            if (!deckgl) {
+                deckgl = new DeckGL({
+                    container: 'container',
+                    mapboxApiAccessToken: MAPBOX_TOKEN,
+                    mapStyle: 'mapbox://styles/mapbox/dark-v10',
+                    initialViewState: {
+                        longitude: -73.98, latitude: 40.75, zoom: 11, pitch: 50, bearing: -10
+                    },
+                    controller: true,
+                    layers: []
+                });
+                requestAnimationFrame(animate); // 启动动画循环
+            }
+
+            // 更新图层数据
+            const layer = new ArcLayer({
+                id: 'taxi-arcs',
+                data: data,
+                getSourcePosition: d => d.from,
+                getTargetPosition: d => d.to,
+                getSourceColor: [0, 255, 200],
+                getTargetColor: [255, 0, 100],
+                getWidth: 2,
+                extensions: [new DataFilterExtension({filterSize: 1})],
+                getFilterValue: d => d.time,
+                filterRange: [currentTime, currentTime + timeWindow], 
+                opacity: 0.8
+            });
+
+            deckgl.setProps({ layers: [layer] });
+        }
+
+        // 🟢 4. 动画循环
+        function animate() {
+            if (isPlaying) {
+                currentTime += animationSpeed;
+                if (currentTime > 86400) currentTime = 0;
+                slider.value = currentTime;
+            }
+            
+            // 更新 UI 时钟：组合 "日期" + "时间"
+            const timeStr = formatTime(currentTime);
+            // 格式: 2025.07.01 08:30
+            clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${timeStr}`;
+
+            // 更新 DeckGL 过滤范围
+            if (deckgl && deckgl.props.layers.length > 0) {
+                 const currentLayer = deckgl.props.layers[0].clone({
+                     filterRange: [currentTime, currentTime + timeWindow]
+                 });
+                 deckgl.setProps({ layers: [currentLayer] });
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 辅助: 秒转时间
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
+
+        // 交互逻辑
+        playBtn.onclick = () => { isPlaying = !isPlaying; playBtn.innerText = isPlaying ? "⏸" : "▶"; };
+        slider.addEventListener('input', (e) => {
+            currentTime = parseInt(e.target.value);
+            // 拖拽时手动触发一次更新，防止暂停时画面不动
+            if (!isPlaying && deckgl) {
+                 const currentLayer = deckgl.props.layers[0].clone({
+                     filterRange: [currentTime, currentTime + timeWindow]
+                 });
+                 deckgl.setProps({ layers: [currentLayer] });
+                 clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${formatTime(currentTime)}`;
+            }
+        });
+
+        // 🚀 启动！
+        initDateSelector();
+        loadDataForDate(currentDateStr); // 默认加载 7月1日
+
+    </script>
+</body>
+</html>
