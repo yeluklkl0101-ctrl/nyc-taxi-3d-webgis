@@ -230,6 +230,7 @@
             dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
         }
 
+        
         function loadDataForDate(dateStr) {
             currentDateStr = dateStr;
             const fileName = `./trips_${dateStr}.json`;
