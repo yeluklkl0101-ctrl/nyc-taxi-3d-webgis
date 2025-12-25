@@ -2,13 +2,13 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>NYC Taxi + Gemini 3 (2025 Edition)</title>
+    <title>NYC Taxi + Gemini AI (Stable Fix)</title>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         #container { width: 100vw; height: 100vh; }
         
-        /* === UI 样式保持不变 === */
+        /* UI 样式 */
         #control-panel {
             position: absolute; top: 20px; left: 20px;
             width: 300px;
@@ -47,7 +47,7 @@
     <script type="importmap">
       {
         "imports": {
-          "@google/genai": "https://esm.run/@google/genai"
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
         }
       }
     </script>
@@ -68,9 +68,9 @@
 
     <div id="ai-panel">
         <div id="chat-history">
-            <div class="msg ai">你好！我是 Gemini 3 驱动的交通助手。<br>你可以问我：“现在的交通状况如何？”</div>
+            <div class="msg ai">你好！我是交通 AI 助手。<br>你可以问我：“现在的交通状况如何？”</div>
         </div>
-        <div class="typing" id="typing-indicator">Gemini 3 正在思考...</div>
+        <div class="typing" id="typing-indicator">Gemini 正在思考...</div>
         <div id="input-area">
             <input type="text" id="ai-input" placeholder="✨ 询问 AI 关于当前的交通数据..." autocomplete="off">
             <button id="send-btn">发送</button>
@@ -81,74 +81,9 @@
     <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
 
     <script type="module">
-        // 🟢 升级：引入新版 SDK
-        import { GoogleGenAI } from "@google/genai";
-
-        // ============================================
-        // 🔑 填入你的 API KEY
-        // ============================================
-        const API_KEY = "AIzaSyBD5-mYSR2G-k2-5KsnKoab-ulS3LwR5iQ"; 
-        // ============================================
-
-        // 🟢 升级：新版初始化语法
-        const genAI = new GoogleGenAI({ apiKey: API_KEY });
-        
-        // 🟢 升级：使用最新的 Gemini 3 Flash 模型
-        // 如果报错，可以尝试回退到 'gemini-2.0-flash' 或 'gemini-1.5-pro'
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash" });
-
-        const chatHistory = document.getElementById('chat-history');
-        const aiInput = document.getElementById('ai-input');
-        const sendBtn = document.getElementById('send-btn');
-        const typingIndicator = document.getElementById('typing-indicator');
-
-        async function askGemini() {
-            const prompt = aiInput.value.trim();
-            if (!prompt) return;
-
-            chatHistory.style.display = "block";
-            addMessage(prompt, 'user');
-            aiInput.value = '';
-            typingIndicator.style.display = 'block';
-
-            const context = `你是一个专业的 WebGIS 交通分析助手。
-            当前展示的是 2025年7月纽约出租车数据。
-            当前时间：${document.getElementById('clock-display').innerText}。
-            用户问题：${prompt}`;
-
-            try {
-                // 新版 SDK 调用方式基本一致
-                const result = await model.generateContent(context);
-                const response = await result.response;
-                const text = response.text();
-                
-                typingIndicator.style.display = 'none';
-                addMessage(text, 'ai');
-            } catch (error) {
-                console.error("Gemini Error:", error);
-                typingIndicator.style.display = 'none';
-                // 更加友好的错误提示
-                if(error.toString().includes("404")) {
-                    addMessage("❌ 模型版本过旧或不可用，请检查代码中的 model 名称。", 'ai');
-                } else {
-                    addMessage("❌ 连接失败，请检查网络或 API Key。", 'ai');
-                }
-            }
-        }
-
-        function addMessage(text, sender) {
-            const div = document.createElement('div');
-            div.className = `msg ${sender}`;
-            div.innerHTML = text.replace(/\n/g, '<br>');
-            chatHistory.appendChild(div);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
-
-        sendBtn.addEventListener('click', askGemini);
-        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
-        aiInput.addEventListener('focus', () => { chatHistory.style.display = "block"; });
-
-        // --- 地图逻辑保持不变 ---
+        // ----------------------------------------------------
+        // 第一部分：先初始化地图（保证地图永远能出来）
+        // ----------------------------------------------------
         const {DeckGL, ArcLayer, DataFilterExtension} = deck;
         const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
         
@@ -164,6 +99,7 @@
         const slider = document.getElementById('time-slider');
         const playBtn = document.getElementById('play-btn');
 
+        // 初始化日期选择器
         function initDateSelector() {
             for (let i = 1; i <= 31; i++) {
                 const dayStr = i < 10 ? `0${i}` : `${i}`;
@@ -176,6 +112,7 @@
             dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
         }
 
+        // 加载数据
         function loadDataForDate(dateStr) {
             currentDateStr = dateStr;
             const fileName = `./trips_${dateStr}.json`;
@@ -183,6 +120,7 @@
                 .then(data => updateDeckGL(data)).catch(err => updateDeckGL([]));
         }
 
+        // 更新地图
         function updateDeckGL(data) {
             if (!deckgl) {
                 deckgl = new DeckGL({
@@ -211,6 +149,7 @@
             deckgl.setProps({ layers: [layer] });
         }
 
+        // 动画循环
         function animate() {
             if (isPlaying) {
                 currentTime += animationSpeed;
@@ -242,8 +181,85 @@
             }
         });
 
+        // 立即启动地图
         initDateSelector();
-        loadDataForDate(currentDateStr); 
+        loadDataForDate(currentDateStr);
+
+
+        // ----------------------------------------------------
+        // 第二部分：AI 初始化 (放在最后，防止影响地图)
+        // ----------------------------------------------------
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        // ============================================
+        // 🔑 你的 API KEY
+        // ============================================
+        const API_KEY = "AIzaSyBD5-mYSR2G-k2-5KsnKoab-ulS3LwR5iQ"; 
+        // ============================================
+
+        let model = null;
+        try {
+            const genAI = new GoogleGenerativeAI(API_KEY);
+            // 💡 换用 'gemini-pro' 这个最稳定的模型名称，防止 404
+            model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            console.log("AI 初始化成功");
+        } catch (e) {
+            console.error("AI 初始化失败，但这不影响地图运行:", e);
+        }
+
+        const chatHistory = document.getElementById('chat-history');
+        const aiInput = document.getElementById('ai-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        async function askGemini() {
+            const prompt = aiInput.value.trim();
+            if (!prompt) return;
+
+            chatHistory.style.display = "block";
+            addMessage(prompt, 'user');
+            aiInput.value = '';
+            typingIndicator.style.display = 'block';
+
+            if (!model) {
+                typingIndicator.style.display = 'none';
+                addMessage("❌ AI 未成功加载，请检查网络或 API Key", 'ai');
+                return;
+            }
+
+            const context = `你是一个WebGIS助手。当前展示2025年7月数据。当前时间：${clockDisplay.innerText}。问题：${prompt}`;
+
+            try {
+                const result = await model.generateContent(context);
+                const response = await result.response;
+                const text = response.text();
+                
+                typingIndicator.style.display = 'none';
+                addMessage(text, 'ai');
+            } catch (error) {
+                console.error("Gemini Error:", error);
+                typingIndicator.style.display = 'none';
+                // 更加智能的错误提示
+                if(error.toString().includes("404")) {
+                    addMessage("❌ 错误 404: 模型未找到。请尝试在代码中将 model 改为 'gemini-1.5-flash' 再试。", 'ai');
+                } else {
+                    addMessage("❌ 连接失败，请确保你的 VPN 已开启并避开香港节点。", 'ai');
+                }
+            }
+        }
+
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `msg ${sender}`;
+            div.innerHTML = text.replace(/\n/g, '<br>');
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        sendBtn.addEventListener('click', askGemini);
+        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
+        aiInput.addEventListener('focus', () => { chatHistory.style.display = "block"; });
+
     </script>
 </body>
 </html>
