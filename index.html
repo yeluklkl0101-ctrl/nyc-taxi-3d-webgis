@@ -201,7 +201,7 @@
         try {
             const genAI = new GoogleGenerativeAI(API_KEY);
             // 💡 换用 'gemini-pro' 这个最稳定的模型名称，防止 404
-            model = genAI.getGenerativeModel({ model: "gemini-pro" });
+            model = genAI.getGenerativeModel({ model: "gemini-3-flash" });
             console.log("AI 初始化成功");
         } catch (e) {
             console.error("AI 初始化失败，但这不影响地图运行:", e);
