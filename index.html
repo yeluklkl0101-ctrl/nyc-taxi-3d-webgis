@@ -2,15 +2,15 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>NYC Taxi + Gemini AI</title>
+    <title>NYC Taxi + Gemini 3 (2025 Edition)</title>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         #container { width: 100vw; height: 100vh; }
         
-        /* === 原有控件样式保持不变 === */
+        /* === UI 样式保持不变 === */
         #control-panel {
-            position: absolute; top: 20px; left: 20px; /* 移到左上角，给AI腾位置 */
+            position: absolute; top: 20px; left: 20px;
             width: 300px;
             background: rgba(10, 10, 10, 0.8);
             border: 1px solid rgba(255,255,255,0.2);
@@ -24,77 +24,30 @@
         button { background: #eee; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; }
         input[type=range] { width: 100%; accent-color: #00ffcc; }
 
-        /* === 🤖 新增：AI 对话面板样式 === */
         #ai-panel {
-            position: absolute; 
-            bottom: 30px; 
-            left: 50%; 
-            transform: translateX(-50%); /* 居中 */
-            width: 400px;
-            max-height: 500px;
-            background: rgba(20, 25, 30, 0.95); /* 深色磨砂玻璃 */
-            backdrop-filter: blur(10px);
-            border: 1px solid #00ffcc;
-            border-radius: 16px;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 400px; max-height: 500px;
+            background: rgba(20, 25, 30, 0.95); backdrop-filter: blur(10px);
+            border: 1px solid #00ffcc; border-radius: 16px;
             box-shadow: 0 0 30px rgba(0, 255, 204, 0.2);
-            z-index: 20;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+            z-index: 20; display: flex; flex-direction: column; overflow: hidden;
             transition: all 0.3s ease;
         }
-
-        /* 聊天记录区域 */
-        #chat-history {
-            flex-grow: 1;
-            padding: 15px;
-            overflow-y: auto;
-            max-height: 300px;
-            font-size: 14px;
-            color: #ddd;
-            display: none; /* 默认隐藏历史，只显示输入框 */
-        }
-        
-        /* 消息气泡 */
+        #chat-history { flex-grow: 1; padding: 15px; overflow-y: auto; max-height: 300px; font-size: 14px; color: #ddd; display: none; }
         .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; max-width: 80%; line-height: 1.4; }
         .msg.user { background: #005f4c; color: white; align-self: flex-end; margin-left: auto; text-align: right;}
         .msg.ai { background: #333; color: #00ffcc; align-self: flex-start; border: 1px solid #444; }
-
-        /* 输入框区域 */
-        #input-area {
-            display: flex;
-            padding: 10px;
-            background: rgba(0,0,0,0.3);
-            border-top: 1px solid rgba(255,255,255,0.1);
-        }
-        #ai-input {
-            flex-grow: 1;
-            background: transparent;
-            border: none;
-            color: white;
-            outline: none;
-            font-size: 15px;
-        }
-        #send-btn {
-            background: transparent;
-            color: #00ffcc;
-            border: 1px solid #00ffcc;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            margin-left: 10px;
-            transition: 0.2s;
-        }
+        #input-area { display: flex; padding: 10px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.1); }
+        #ai-input { flex-grow: 1; background: transparent; border: none; color: white; outline: none; font-size: 15px; }
+        #send-btn { background: transparent; color: #00ffcc; border: 1px solid #00ffcc; padding: 5px 15px; border-radius: 20px; font-size: 12px; margin-left: 10px; transition: 0.2s; }
         #send-btn:hover { background: #00ffcc; color: black; }
-        
-        /* 加载动画 */
         .typing { font-style: italic; color: #888; font-size: 12px; margin-left: 15px; display: none; }
     </style>
     
     <script type="importmap">
       {
         "imports": {
-          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+          "@google/genai": "https://esm.run/@google/genai"
         }
       }
     </script>
@@ -115,9 +68,9 @@
 
     <div id="ai-panel">
         <div id="chat-history">
-            <div class="msg ai">你好！我是纽约交通 AI 助手。你可以问我：<br>“现在的交通状况如何？”<br>“哪个区域最拥堵？”</div>
+            <div class="msg ai">你好！我是 Gemini 3 驱动的交通助手。<br>你可以问我：“现在的交通状况如何？”</div>
         </div>
-        <div class="typing" id="typing-indicator">Gemini 正在思考...</div>
+        <div class="typing" id="typing-indicator">Gemini 3 正在思考...</div>
         <div id="input-area">
             <input type="text" id="ai-input" placeholder="✨ 询问 AI 关于当前的交通数据..." autocomplete="off">
             <button id="send-btn">发送</button>
@@ -128,91 +81,83 @@
     <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
 
     <script type="module">
-        import { GoogleGenerativeAI } from "@google/generative-ai";
+        // 🟢 升级：引入新版 SDK
+        import { GoogleGenAI } from "@google/genai";
 
         // ============================================
-        // 🔑在此处填入你的 API KEY (注意安全)
+        // 🔑 填入你的 API KEY
         // ============================================
         const API_KEY = "AIzaSyBD5-mYSR2G-k2-5KsnKoab-ulS3LwR5iQ"; 
         // ============================================
 
-        const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // 🟢 升级：新版初始化语法
+        const genAI = new GoogleGenAI({ apiKey: API_KEY });
+        
+        // 🟢 升级：使用最新的 Gemini 3 Flash 模型
+        // 如果报错，可以尝试回退到 'gemini-2.0-flash' 或 'gemini-1.5-pro'
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash" });
 
-        // --- AI 交互逻辑 ---
         const chatHistory = document.getElementById('chat-history');
         const aiInput = document.getElementById('ai-input');
         const sendBtn = document.getElementById('send-btn');
         const typingIndicator = document.getElementById('typing-indicator');
-        const aiPanel = document.getElementById('ai-panel');
 
-        // 发送消息
         async function askGemini() {
             const prompt = aiInput.value.trim();
             if (!prompt) return;
 
-            // 1. 显示用户提问
-            chatHistory.style.display = "block"; // 展开聊天记录
+            chatHistory.style.display = "block";
             addMessage(prompt, 'user');
             aiInput.value = '';
             typingIndicator.style.display = 'block';
 
-            // 2. 构造上下文提示词 (让 AI 知道它是个交通专家)
-            // 这里我们把当前的日期和时间传给 AI，让它假装在分析
             const context = `你是一个专业的 WebGIS 交通分析助手。
-            当前展示的数据是 2025年7月纽约出租车轨迹数据。
-            当前画面显示的时间是：${document.getElementById('clock-display').innerText}。
-            
-            如果用户问交通状况，请根据当前时间（早高峰、晚高峰、深夜等）进行合理的推测和回答。
-            回答要简短、专业，不要超过 100 字。
-            
-            用户的问题是：${prompt}`;
+            当前展示的是 2025年7月纽约出租车数据。
+            当前时间：${document.getElementById('clock-display').innerText}。
+            用户问题：${prompt}`;
 
             try {
-                // 3. 调用 API
+                // 新版 SDK 调用方式基本一致
                 const result = await model.generateContent(context);
                 const response = await result.response;
                 const text = response.text();
                 
-                // 4. 显示 AI 回答
                 typingIndicator.style.display = 'none';
                 addMessage(text, 'ai');
             } catch (error) {
-                console.error(error);
+                console.error("Gemini Error:", error);
                 typingIndicator.style.display = 'none';
-                addMessage("❌ 连接 AI 失败，请检查 API Key 或网络。", 'ai');
+                // 更加友好的错误提示
+                if(error.toString().includes("404")) {
+                    addMessage("❌ 模型版本过旧或不可用，请检查代码中的 model 名称。", 'ai');
+                } else {
+                    addMessage("❌ 连接失败，请检查网络或 API Key。", 'ai');
+                }
             }
         }
 
         function addMessage(text, sender) {
             const div = document.createElement('div');
             div.className = `msg ${sender}`;
-            div.innerHTML = text.replace(/\n/g, '<br>'); // 支持换行
+            div.innerHTML = text.replace(/\n/g, '<br>');
             chatHistory.appendChild(div);
-            chatHistory.scrollTop = chatHistory.scrollHeight; // 滚动到底部
+            chatHistory.scrollTop = chatHistory.scrollHeight;
         }
 
-        // 绑定事件
         sendBtn.addEventListener('click', askGemini);
         aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
-        
-        // 点击输入框时自动展开历史
         aiInput.addEventListener('focus', () => { chatHistory.style.display = "block"; });
 
-
-        // --- 以下是原有的地图逻辑 (不需要大改) ---
+        // --- 地图逻辑保持不变 ---
         const {DeckGL, ArcLayer, DataFilterExtension} = deck;
         const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
-
-        // 全局变量
+        
         let currentDateStr = "2025-07-01"; 
         let currentTime = 0;              
         let isPlaying = true;
-        let animationSpeed = 10;
+        let animationSpeed = 20;
         const timeWindow = 3600;
-        
         let deckgl = null; 
-        
         
         const dateSelect = document.getElementById('date-selector');
         const clockDisplay = document.getElementById('clock-display');
@@ -231,22 +176,11 @@
             dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
         }
 
-
         function loadDataForDate(dateStr) {
             currentDateStr = dateStr;
             const fileName = `./trips_${dateStr}.json`;
-            fetch(fileName)
-                .then(res => {
-                    if(!res.ok) throw new Error("File not found");
-                    return res.json();
-                })
-                .then(data => {
-                    updateDeckGL(data);
-                })
-                .catch(err => {
-                    console.error(err);
-                    updateDeckGL([]); 
-                });
+            fetch(fileName).then(res => { if(!res.ok) throw new Error("File not found"); return res.json(); })
+                .then(data => updateDeckGL(data)).catch(err => updateDeckGL([]));
         }
 
         function updateDeckGL(data) {
@@ -255,15 +189,12 @@
                     container: 'container',
                     mapboxApiAccessToken: MAPBOX_TOKEN,
                     mapStyle: 'mapbox://styles/mapbox/dark-v10',
-                    initialViewState: {
-                        longitude: -73.98, latitude: 40.75, zoom: 11, pitch: 50, bearing: -10
-                    },
+                    initialViewState: { longitude: -73.98, latitude: 40.75, zoom: 11, pitch: 50, bearing: -10 },
                     controller: true,
                     layers: []
                 });
                 requestAnimationFrame(animate); 
             }
-
             const layer = new ArcLayer({
                 id: 'taxi-arcs',
                 data: data,
@@ -277,7 +208,6 @@
                 filterRange: [currentTime, currentTime + timeWindow], 
                 opacity: 0.8
             });
-
             deckgl.setProps({ layers: [layer] });
         }
 
@@ -287,17 +217,12 @@
                 if (currentTime > 86400) currentTime = 0;
                 slider.value = currentTime;
             }
-            
             const timeStr = formatTime(currentTime);
             clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${timeStr}`;
-
             if (deckgl && deckgl.props.layers.length > 0) {
-                 const currentLayer = deckgl.props.layers[0].clone({
-                     filterRange: [currentTime, currentTime + timeWindow]
-                 });
+                 const currentLayer = deckgl.props.layers[0].clone({ filterRange: [currentTime, currentTime + timeWindow] });
                  deckgl.setProps({ layers: [currentLayer] });
             }
-
             requestAnimationFrame(animate);
         }
 
@@ -311,9 +236,7 @@
         slider.addEventListener('input', (e) => {
             currentTime = parseInt(e.target.value);
             if (!isPlaying && deckgl) {
-                 const currentLayer = deckgl.props.layers[0].clone({
-                     filterRange: [currentTime, currentTime + timeWindow]
-                 });
+                 const currentLayer = deckgl.props.layers[0].clone({ filterRange: [currentTime, currentTime + timeWindow] });
                  deckgl.setProps({ layers: [currentLayer] });
                  clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${formatTime(currentTime)}`;
             }
