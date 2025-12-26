@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>NYC Taxi WebGIS - Local Pro</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        #container { width: 100vw; height: 100vh; }
+        
+        #control-panel {
+            position: absolute; top: 20px; left: 20px;
+            width: 300px;
+            background: rgba(10, 10, 10, 0.85);
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 12px; padding: 15px; z-index: 10; color: white;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        }
+        h2 { margin: 0 0 10px 0; font-size: 18px; color: #00ffcc; text-transform: uppercase; letter-spacing: 1px;}
+        select { background: #222; color: #fff; border: 1px solid #444; width: 100%; margin-bottom: 10px; padding: 5px; }
+        #clock-display { font-size: 20px; font-weight: bold; color: #fff; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px;}
+        button { background: #333; color: white; border: 1px solid #555; padding: 6px 15px; border-radius: 4px; cursor: pointer; transition: 0.2s;}
+        button:hover { background: #00ffcc; color: black; }
+        button.active { background: #ff0055; border-color: #ff0055; color: white; }
+        input[type=range] { width: 100%; accent-color: #00ffcc; margin-top: 10px; }
+
+        #ai-panel {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 400px; max-height: 500px;
+            background: rgba(20, 25, 30, 0.95); backdrop-filter: blur(10px);
+            border: 1px solid #00ffcc; border-radius: 16px;
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.2);
+            z-index: 20; display: flex; flex-direction: column; overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        #chat-history { flex-grow: 1; padding: 15px; overflow-y: auto; max-height: 300px; font-size: 14px; color: #ddd; display: block; }
+        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; max-width: 80%; line-height: 1.4; word-wrap: break-word;}
+        .msg.user { background: #005f4c; color: white; align-self: flex-end; margin-left: auto; text-align: right;}
+        .msg.ai { background: #333; color: #00ffcc; align-self: flex-start; border: 1px solid #444; }
+        #input-area { display: flex; padding: 10px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.1); }
+        #ai-input { flex-grow: 1; background: transparent; border: none; color: white; outline: none; font-size: 15px; }
+        #send-btn { background: transparent; color: #00ffcc; border: 1px solid #00ffcc; padding: 5px 15px; border-radius: 20px; font-size: 12px; margin-left: 10px; }
+        #send-btn:hover { background: #00ffcc; color: black; }
+        .typing { font-style: italic; color: #888; font-size: 12px; margin-left: 15px; display: none; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: red; margin-right: 5px;}
+        .status-online { background: #00ff00; box-shadow: 0 0 5px #00ff00; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+
+    <div id="control-panel">
+        <h2>WebGIS 监控台 <span id="server-status" class="status-dot" title="后端连接状态"></span></h2>
+        <div id="clock-display">2025.07.01 00:00</div>
+        
+        <label>选择日期：</label>
+        <select id="date-selector"></select>
+        
+        <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #444;">
+            <label>图层控制：</label>
+            <div style="display:flex; gap:10px; margin-top:5px;">
+                <button id="mode-trips" class="active">轨迹视图</button>
+                <button id="mode-hotspot">热点分析</button>
+            </div>
+        </div>
+
+        <div style="margin-top:15px;">
+            <div style="display:flex; gap:10px; align-items:center;">
+                <button id="play-btn">⏸</button>
+                <input type="range" id="time-slider" min="0" max="86400" step="10" value="0">
+            </div>
+        </div>
+    </div>
+
+    <div id="ai-panel">
+        <div id="chat-history"></div>
+        <div class="typing" id="typing-indicator">Backend AI 正在思考...</div>
+        <div id="input-area">
+            <input type="text" id="ai-input" placeholder="✨ 询问本地 AI (支持上下文)..." autocomplete="off">
+            <button id="send-btn">发送</button>
+        </div>
+    </div>
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
+
+    <script>
+        const {DeckGL, ArcLayer, HexagonLayer, DataFilterExtension} = deck;
+        const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
+        const API_BASE = "http://127.0.0.1:5000/api"; 
+
+        let currentDateStr = "2025-07-01"; 
+        let currentTime = 0;              
+        let isPlaying = true;
+        let animationSpeed = 20;
+        const timeWindow = 3600;
+        
+        let deckgl = null; 
+        let currentData = [];    
+        let hotspotData = [];    
+        let viewMode = 'trips';  
+
+        const dateSelect = document.getElementById('date-selector');
+        const clockDisplay = document.getElementById('clock-display');
+        const slider = document.getElementById('time-slider');
+        const playBtn = document.getElementById('play-btn');
+        const serverStatus = document.getElementById('server-status');
+
+        function initDateSelector() {
+            for (let i = 1; i <= 31; i++) {
+                const dayStr = i < 10 ? `0${i}` : `${i}`;
+                const val = `2025-07-${dayStr}`;
+                const option = document.createElement("option");
+                option.value = val;
+                option.text = val;
+                dateSelect.appendChild(option);
+            }
+            dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
+        }
+
+        async function loadDataForDate(dateStr) {
+            currentDateStr = dateStr;
+            try {
+                const resTrips = await fetch(`${API_BASE}/get_trips?date=${dateStr}`);
+                if(resTrips.ok) {
+                    currentData = await resTrips.json();
+                    serverStatus.classList.add('status-online');
+                } else {
+                    currentData = [];
+                }
+
+                const resHot = await fetch(`${API_BASE}/get_hotspots?date=${dateStr}`);
+                if(resHot.ok) {
+                    hotspotData = await resHot.json();
+                }
+
+                updateDeckGL();
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                serverStatus.classList.remove('status-online');
+            }
+        }
+
+        document.getElementById('mode-trips').onclick = function() {
+            viewMode = 'trips'; this.classList.add('active');
+            document.getElementById('mode-hotspot').classList.remove('active'); updateDeckGL();
+        };
+        document.getElementById('mode-hotspot').onclick = function() {
+            viewMode = 'hotspot'; this.classList.add('active');
+            document.getElementById('mode-trips').classList.remove('active'); updateDeckGL();
+        };
+
+        function updateDeckGL() {
+            const layers = [];
+            if (viewMode === 'trips') {
+                layers.push(new ArcLayer({
+                    id: 'taxi-arcs', data: currentData,
+                    getSourcePosition: d => d.from, getTargetPosition: d => d.to,
+                    getSourceColor: [0, 255, 200], getTargetColor: [255, 0, 100],
+                    getWidth: 2,
+                    extensions: [new DataFilterExtension({filterSize: 1})],
+                    getFilterValue: d => d.time, filterRange: [currentTime, currentTime + timeWindow], 
+                    opacity: 0.8
+                }));
+            }
+            if (viewMode === 'hotspot') {
+                layers.push(new HexagonLayer({
+                    id: 'heatmap', data: hotspotData,
+                    getPosition: d => d, radius: 300, elevationScale: 4, extruded: true,
+                    pickable: true, opacity: 0.8,
+                    colorRange: [[1, 152, 189], [73, 227, 206], [216, 254, 181], [254, 237, 177], [254, 173, 154], [209, 55, 78]],
+                    upperPercentile: 98
+                }));
+            }
+            if (!deckgl) {
+                deckgl = new DeckGL({
+                    container: 'container', mapboxApiAccessToken: MAPBOX_TOKEN,
+                    mapStyle: 'mapbox://styles/mapbox/dark-v10',
+                    initialViewState: { longitude: -73.98, latitude: 40.75, zoom: 11, pitch: 50, bearing: -10 },
+                    controller: true, layers: layers
+                });
+                requestAnimationFrame(animate); 
+            } else { deckgl.setProps({ layers: layers }); }
+        }
+
+        function animate() {
+            if (isPlaying && viewMode === 'trips') {
+                currentTime += animationSpeed;
+                if (currentTime > 86400) currentTime = 0;
+                slider.value = currentTime;
+            }
+            clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${formatTime(currentTime)}`;
+            if (deckgl && viewMode === 'trips') {
+                 const currentLayers = deckgl.props.layers.map(layer => {
+                     if(layer.id === 'taxi-arcs') return layer.clone({ filterRange: [currentTime, currentTime + timeWindow] });
+                     return layer;
+                 });
+                 deckgl.setProps({ layers: currentLayers });
+            }
+            requestAnimationFrame(animate);
+        }
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
+        playBtn.onclick = () => { isPlaying = !isPlaying; playBtn.innerText = isPlaying ? "⏸" : "▶"; };
+        slider.addEventListener('input', (e) => { currentTime = parseInt(e.target.value); });
+        initDateSelector();
+        loadDataForDate(currentDateStr);
+
+        // --- AI 模块 (连接 Python 后端) ---
+        const chatHistory = document.getElementById('chat-history');
+        const aiInput = document.getElementById('ai-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // 加载历史记录
+        async function loadHistory() {
+            try {
+                const res = await fetch(`${API_BASE}/chat`);
+                if(res.ok) {
+                    const msgs = await res.json();
+                    msgs.forEach(m => addMessageToUI(m.content, m.role));
+                }
+            } catch(e) {}
+        }
+        loadHistory();
+
+        async function askGemini() {
+            const prompt = aiInput.value.trim();
+            if (!prompt) return;
+
+            addMessageToUI(prompt, 'user');
+            aiInput.value = '';
+            typingIndicator.style.display = 'block';
+
+            const contextInfo = `当前时间：${clockDisplay.innerText}。模式：${viewMode}。`;
+
+            try {
+                const response = await fetch(`${API_BASE}/chat_with_ai`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: prompt, context: contextInfo })
+                });
+                const data = await response.json();
+                typingIndicator.style.display = 'none';
+                
+                if (data.reply) addMessageToUI(data.reply, 'ai');
+                else addMessageToUI("AI 无响应", 'ai');
+            } catch (error) {
+                typingIndicator.style.display = 'none';
+                addMessageToUI("❌ 连接后端失败", 'ai');
+            }
+        }
+        function addMessageToUI(text, sender) {
+            const div = document.createElement('div');
+            div.className = `msg ${sender}`;
+            div.innerHTML = text.replace(/\n/g, '<br>');
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+        sendBtn.addEventListener('click', askGemini);
+        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
+    </script>
+</body>
+</html>

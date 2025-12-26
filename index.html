@@ -2,13 +2,12 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>NYC Taxi + Gemini AI (Stable Fix)</title>
+    <title>NYC Taxi WebGIS - Public Demo</title>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         #container { width: 100vw; height: 100vh; }
         
-        /* UI 样式 */
         #control-panel {
             position: absolute; top: 20px; left: 20px;
             width: 300px;
@@ -23,34 +22,10 @@
         #clock-display { font-size: 20px; font-weight: bold; color: #00ffcc; margin-bottom: 10px; }
         button { background: #eee; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; }
         input[type=range] { width: 100%; accent-color: #00ffcc; }
-
-        #ai-panel {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            width: 400px; max-height: 500px;
-            background: rgba(20, 25, 30, 0.95); backdrop-filter: blur(10px);
-            border: 1px solid #00ffcc; border-radius: 16px;
-            box-shadow: 0 0 30px rgba(0, 255, 204, 0.2);
-            z-index: 20; display: flex; flex-direction: column; overflow: hidden;
-            transition: all 0.3s ease;
-        }
-        #chat-history { flex-grow: 1; padding: 15px; overflow-y: auto; max-height: 300px; font-size: 14px; color: #ddd; display: none; }
-        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; max-width: 80%; line-height: 1.4; }
-        .msg.user { background: #005f4c; color: white; align-self: flex-end; margin-left: auto; text-align: right;}
-        .msg.ai { background: #333; color: #00ffcc; align-self: flex-start; border: 1px solid #444; }
-        #input-area { display: flex; padding: 10px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.1); }
-        #ai-input { flex-grow: 1; background: transparent; border: none; color: white; outline: none; font-size: 15px; }
-        #send-btn { background: transparent; color: #00ffcc; border: 1px solid #00ffcc; padding: 5px 15px; border-radius: 20px; font-size: 12px; margin-left: 10px; transition: 0.2s; }
-        #send-btn:hover { background: #00ffcc; color: black; }
-        .typing { font-style: italic; color: #888; font-size: 12px; margin-left: 15px; display: none; }
+        
+        /* 仅保留可视化说明，移除 AI 面板相关样式 */
+        .note { font-size: 12px; color: #888; margin-top: 10px; line-height: 1.5; }
     </style>
-    
-    <script type="importmap">
-      {
-        "imports": {
-          "@google/generative-ai": "https://esm.run/@google/generative-ai"
-        }
-      }
-    </script>
 </head>
 <body>
 
@@ -64,26 +39,20 @@
             <input type="range" id="time-slider" min="0" max="86400" step="10" value="0">
         </div>
         <div style="font-size:12px; color:#aaa; margin-top:5px;">拖动滑块查看不同时间段</div>
-    </div>
-
-    <div id="ai-panel">
-        <div id="chat-history">
-            <div class="msg ai">你好！我是交通 AI 助手。<br>你可以问我：“现在的交通状况如何？”</div>
-        </div>
-        <div class="typing" id="typing-indicator">Gemini 正在思考...</div>
-        <div id="input-area">
-            <input type="text" id="ai-input" placeholder="✨ 询问 AI 关于当前的交通数据..." autocomplete="off">
-            <button id="send-btn">发送</button>
+        
+        <div class="note">
+            <hr style="border:0; border-top:1px solid #333; margin: 10px 0;">
+            <strong>演示说明：</strong><br>
+            这是一个纯前端 WebGIS 演示。<br>
+            AI 智能分析、热点统计与数据库功能<br>
+            请运行本地 Python 版本 (index_local.html)。
         </div>
     </div>
 
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
     <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
 
-    <script type="module">
-        // ----------------------------------------------------
-        // 第一部分：先初始化地图（保证地图永远能出来）
-        // ----------------------------------------------------
+    <script>
         const {DeckGL, ArcLayer, DataFilterExtension} = deck;
         const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
         
@@ -99,7 +68,6 @@
         const slider = document.getElementById('time-slider');
         const playBtn = document.getElementById('play-btn');
 
-        // 初始化日期选择器
         function initDateSelector() {
             for (let i = 1; i <= 31; i++) {
                 const dayStr = i < 10 ? `0${i}` : `${i}`;
@@ -112,15 +80,14 @@
             dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
         }
 
-        // 加载数据
         function loadDataForDate(dateStr) {
             currentDateStr = dateStr;
             const fileName = `./trips_${dateStr}.json`;
+            // 此处恢复为读取本地 JSON 文件
             fetch(fileName).then(res => { if(!res.ok) throw new Error("File not found"); return res.json(); })
                 .then(data => updateDeckGL(data)).catch(err => updateDeckGL([]));
         }
 
-        // 更新地图
         function updateDeckGL(data) {
             if (!deckgl) {
                 deckgl = new DeckGL({
@@ -149,7 +116,6 @@
             deckgl.setProps({ layers: [layer] });
         }
 
-        // 动画循环
         function animate() {
             if (isPlaying) {
                 currentTime += animationSpeed;
@@ -181,85 +147,9 @@
             }
         });
 
-        // 立即启动地图
         initDateSelector();
         loadDataForDate(currentDateStr);
-
-
-        // ----------------------------------------------------
-        // 第二部分：AI 初始化 (放在最后，防止影响地图)
-        // ----------------------------------------------------
-        import { GoogleGenerativeAI } from "@google/generative-ai";
-
-        // ============================================
-        // 🔑 你的 API KEY
-        // ============================================
-        const API_KEY = "AIzaSyBD5-mYSR2G-k2-5KsnKoab-ulS3LwR5iQ"; 
-        // ============================================
-
-        let model = null;
-        try {
-            const genAI = new GoogleGenerativeAI(API_KEY);
-            // 💡 换用 'gemini-pro' 这个最稳定的模型名称，防止 404
-            model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            console.log("AI 初始化成功");
-        } catch (e) {
-            console.error("AI 初始化失败，但这不影响地图运行:", e);
-        }
-
-        const chatHistory = document.getElementById('chat-history');
-        const aiInput = document.getElementById('ai-input');
-        const sendBtn = document.getElementById('send-btn');
-        const typingIndicator = document.getElementById('typing-indicator');
-
-        async function askGemini() {
-            const prompt = aiInput.value.trim();
-            if (!prompt) return;
-
-            chatHistory.style.display = "block";
-            addMessage(prompt, 'user');
-            aiInput.value = '';
-            typingIndicator.style.display = 'block';
-
-            if (!model) {
-                typingIndicator.style.display = 'none';
-                addMessage("❌ AI 未成功加载，请检查网络或 API Key", 'ai');
-                return;
-            }
-
-            const context = `你是一个WebGIS助手。当前展示2025年7月数据。当前时间：${clockDisplay.innerText}。问题：${prompt}`;
-
-            try {
-                const result = await model.generateContent(context);
-                const response = await result.response;
-                const text = response.text();
-                
-                typingIndicator.style.display = 'none';
-                addMessage(text, 'ai');
-            } catch (error) {
-                console.error("Gemini Error:", error);
-                typingIndicator.style.display = 'none';
-                // 更加智能的错误提示
-                if(error.toString().includes("404")) {
-                    addMessage("❌ 错误 404: 模型未找到。请尝试在代码中将 model 改为 'gemini-1.5-flash' 再试。", 'ai');
-                } else {
-                    addMessage("❌ 连接失败，请确保你的 VPN 已开启并避开香港节点。", 'ai');
-                }
-            }
-        }
-
-        function addMessage(text, sender) {
-            const div = document.createElement('div');
-            div.className = `msg ${sender}`;
-            div.innerHTML = text.replace(/\n/g, '<br>');
-            chatHistory.appendChild(div);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
-
-        sendBtn.addEventListener('click', askGemini);
-        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
-        aiInput.addEventListener('focus', () => { chatHistory.style.display = "block"; });
-
+        // AI 模块已移除，安全用于 GitHub Pages 展示
     </script>
 </body>
 </html>
