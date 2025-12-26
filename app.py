@@ -80,7 +80,7 @@ def chat_with_ai():
     full_prompt = f"{context_info}\n用户问题：{user_message}"
 
     # Google Gemini REST API 地址
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
     
     # 请求体
     payload = {
