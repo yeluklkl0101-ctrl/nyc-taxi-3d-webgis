@@ -2,19 +2,17 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>NYC Taxi WebGIS - Local Pro</title>
+    <title>NYC WebGIS - DeepSeek Pilot</title>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         #container { width: 100vw; height: 100vh; }
         
         #control-panel {
-            position: absolute; top: 20px; left: 20px;
-            width: 300px;
-            background: rgba(10, 10, 10, 0.85);
-            border: 1px solid rgba(0, 255, 204, 0.3);
+            position: absolute; top: 20px; left: 20px; width: 320px;
+            background: rgba(10, 10, 10, 0.85); border: 1px solid rgba(0, 255, 204, 0.3);
             border-radius: 12px; padding: 15px; z-index: 10; color: white;
-            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            box-shadow: 0 0 20px rgba(0,0,0,0.6); backdrop-filter: blur(5px);
         }
         h2 { margin: 0 0 10px 0; font-size: 18px; color: #00ffcc; text-transform: uppercase; letter-spacing: 1px;}
         select { background: #222; color: #fff; border: 1px solid #444; width: 100%; margin-bottom: 10px; padding: 5px; }
@@ -23,10 +21,21 @@
         button:hover { background: #00ffcc; color: black; }
         button.active { background: #ff0055; border-color: #ff0055; color: white; }
         input[type=range] { width: 100%; accent-color: #00ffcc; margin-top: 10px; }
+        
+        /* 开关样式 */
+        .toggle-container { margin-top: 15px; padding-top: 10px; border-top: 1px dashed #444; display: flex; align-items: center; justify-content: space-between;}
+        .toggle-switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #ff3366; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        .mode-label { font-weight: bold; color: #888; transition: 0.3s; }
+        .mode-label.realtime { color: #ff3366; text-shadow: 0 0 8px rgba(255, 51, 102, 0.5); }
 
         #ai-panel {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            width: 400px; max-height: 500px;
+            width: 450px; max-height: 500px;
             background: rgba(20, 25, 30, 0.95); backdrop-filter: blur(10px);
             border: 1px solid #00ffcc; border-radius: 16px;
             box-shadow: 0 0 30px rgba(0, 255, 204, 0.2);
@@ -34,49 +43,49 @@
             transition: all 0.3s ease;
         }
         #chat-history { flex-grow: 1; padding: 15px; overflow-y: auto; max-height: 300px; font-size: 14px; color: #ddd; display: block; }
-        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; max-width: 80%; line-height: 1.4; word-wrap: break-word;}
+        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; max-width: 85%; line-height: 1.4; word-wrap: break-word;}
         .msg.user { background: #005f4c; color: white; align-self: flex-end; margin-left: auto; text-align: right;}
         .msg.ai { background: #333; color: #00ffcc; align-self: flex-start; border: 1px solid #444; }
         #input-area { display: flex; padding: 10px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.1); }
         #ai-input { flex-grow: 1; background: transparent; border: none; color: white; outline: none; font-size: 15px; }
         #send-btn { background: transparent; color: #00ffcc; border: 1px solid #00ffcc; padding: 5px 15px; border-radius: 20px; font-size: 12px; margin-left: 10px; }
-        #send-btn:hover { background: #00ffcc; color: black; }
-        .typing { font-style: italic; color: #888; font-size: 12px; margin-left: 15px; display: none; }
+        .typing { font-style: italic; color: #888; font-size: 12px; margin-left: 15px; display: none; padding-bottom:5px;}
         .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: red; margin-right: 5px;}
         .status-online { background: #00ff00; box-shadow: 0 0 5px #00ff00; }
     </style>
 </head>
 <body>
     <div id="container"></div>
-
     <div id="control-panel">
-        <h2>WebGIS 监控台 <span id="server-status" class="status-dot" title="后端连接状态"></span></h2>
+        <h2>WebGIS 监控台 <span id="server-status" class="status-dot"></span></h2>
         <div id="clock-display">2025.07.01 00:00</div>
-        
-        <label>选择日期：</label>
-        <select id="date-selector"></select>
-        
-        <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #444;">
-            <label>图层控制：</label>
-            <div style="display:flex; gap:10px; margin-top:5px;">
-                <button id="mode-trips" class="active">轨迹视图</button>
-                <button id="mode-hotspot">热点分析</button>
-            </div>
-        </div>
-
-        <div style="margin-top:15px;">
+        <label>选择日期：</label> <select id="date-selector"></select>
+        <div style="margin-top:10px;">
             <div style="display:flex; gap:10px; align-items:center;">
                 <button id="play-btn">⏸</button>
                 <input type="range" id="time-slider" min="0" max="86400" step="10" value="0">
             </div>
         </div>
+        <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #444;">
+            <label>视图模式：</label>
+            <div style="display:flex; gap:10px; margin-top:5px;">
+                <button id="mode-trips" class="active">轨迹流</button>
+                <button id="mode-hotspot">热力图</button>
+            </div>
+        </div>
+        <div class="toggle-container">
+            <span id="mode-text" class="mode-label">历史分析模式 (2D)</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="realtime-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
     </div>
-
     <div id="ai-panel">
         <div id="chat-history"></div>
-        <div class="typing" id="typing-indicator">Backend AI 正在思考...</div>
+        <div class="typing" id="typing-indicator">DeepSeek 正在思考...</div>
         <div id="input-area">
-            <input type="text" id="ai-input" placeholder="✨ 询问本地 AI (支持上下文)..." autocomplete="off">
+            <input type="text" id="ai-input" placeholder="✨ 试着问：'现在几点了' 或 '去时代广场'" autocomplete="off">
             <button id="send-btn">发送</button>
         </div>
     </div>
@@ -85,34 +94,39 @@
     <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
 
     <script>
-        const {DeckGL, ArcLayer, HexagonLayer, DataFilterExtension} = deck;
+        const {DeckGL, ArcLayer, HexagonLayer, DataFilterExtension, FlyToInterpolator} = deck;
         const MAPBOX_TOKEN = 'pk.eyJ1IjoiMWRjajQiLCJhIjoiY21nNWN0ZXhwMDNjbTJqcWQ0aHR5NW5zcyJ9.Op7DM_smqoPKJVf2te3HQw'; 
         const API_BASE = "http://127.0.0.1:5000/api"; 
 
         let currentDateStr = "2025-07-01"; 
         let currentTime = 0;              
         let isPlaying = true;
-        let animationSpeed = 20;
+        let animationSpeed = 30;
         const timeWindow = 3600;
         
         let deckgl = null; 
         let currentData = [];    
         let hotspotData = [];    
         let viewMode = 'trips';  
+        let isRealTimeMode = false; 
+
+        let currentViewState = {
+            longitude: -73.98, latitude: 40.75, zoom: 11, pitch: 0, bearing: 0
+        };
 
         const dateSelect = document.getElementById('date-selector');
         const clockDisplay = document.getElementById('clock-display');
         const slider = document.getElementById('time-slider');
         const playBtn = document.getElementById('play-btn');
-        const serverStatus = document.getElementById('server-status');
+        const realtimeToggle = document.getElementById('realtime-toggle');
+        const modeText = document.getElementById('mode-text');
 
         function initDateSelector() {
             for (let i = 1; i <= 31; i++) {
                 const dayStr = i < 10 ? `0${i}` : `${i}`;
                 const val = `2025-07-${dayStr}`;
                 const option = document.createElement("option");
-                option.value = val;
-                option.text = val;
+                option.value = val; option.text = val;
                 dateSelect.appendChild(option);
             }
             dateSelect.addEventListener('change', (e) => loadDataForDate(e.target.value));
@@ -122,22 +136,13 @@
             currentDateStr = dateStr;
             try {
                 const resTrips = await fetch(`${API_BASE}/get_trips?date=${dateStr}`);
-                if(resTrips.ok) {
-                    currentData = await resTrips.json();
-                    serverStatus.classList.add('status-online');
-                } else {
-                    currentData = [];
-                }
-
+                if(resTrips.ok) currentData = await resTrips.json();
                 const resHot = await fetch(`${API_BASE}/get_hotspots?date=${dateStr}`);
-                if(resHot.ok) {
-                    hotspotData = await resHot.json();
-                }
-
+                if(resHot.ok) hotspotData = await resHot.json();
+                document.getElementById('server-status').classList.add('status-online');
                 updateDeckGL();
             } catch (err) {
-                console.error("Fetch Error:", err);
-                serverStatus.classList.remove('status-online');
+                document.getElementById('server-status').classList.remove('status-online');
             }
         }
 
@@ -150,52 +155,121 @@
             document.getElementById('mode-trips').classList.remove('active'); updateDeckGL();
         };
 
+        // --- 🔴 实时模式开关监听 ---
+        realtimeToggle.addEventListener('change', (e) => {
+            isRealTimeMode = e.target.checked;
+            
+            if (isRealTimeMode) {
+                // 进入实时模式
+                modeText.innerText = "🔴 实时 AI 模式 (3D)";
+                modeText.classList.add('realtime');
+                deckgl.getMapboxMap().setStyle('mapbox://styles/mapbox/satellite-streets-v12');
+                deckgl.getMapboxMap().once('style.load', () => add3DBuildings(deckgl.getMapboxMap()));
+                
+                // 停止动画播放
+                isPlaying = false;
+                playBtn.innerText = "▶";
+                
+                addMessageToUI("系统提示：已接入实时卫星信号，历史数据图层已隐藏。", "ai");
+
+            } else {
+                // 回到历史模式
+                modeText.innerText = "历史分析模式 (2D)";
+                modeText.classList.remove('realtime');
+                deckgl.getMapboxMap().setStyle('mapbox://styles/mapbox/dark-v10');
+                
+                // 恢复平视视角
+                currentViewState = { ...currentViewState, pitch: 0, bearing: 0, transitionDuration: 1000 };
+                deckgl.setProps({ viewState: currentViewState });
+                
+                // 恢复播放
+                isPlaying = true;
+                playBtn.innerText = "⏸";
+
+                addMessageToUI("系统提示：已切回历史数据库，图层已恢复。", "ai");
+            }
+            
+            // ✅ 关键：调用一次 updateDeckGL 以应用图层的隐藏/显示
+            updateDeckGL();
+        });
+
+        function add3DBuildings(map) {
+            if (!map.getLayer('3d-buildings')) {
+                map.addLayer({
+                    'id': '3d-buildings', 'source': 'composite', 'source-layer': 'building',
+                    'filter': ['==', 'extrude', 'true'], 'type': 'fill-extrusion', 'minzoom': 13,
+                    'paint': {
+                        'fill-extrusion-color': '#aaa', 'fill-extrusion-height': ['get', 'height'],
+                        'fill-extrusion-base': ['get', 'min_height'], 'fill-extrusion-opacity': 0.7
+                    }
+                });
+            }
+        }
+
         function updateDeckGL() {
             const layers = [];
-            if (viewMode === 'trips') {
-                layers.push(new ArcLayer({
-                    id: 'taxi-arcs', data: currentData,
-                    getSourcePosition: d => d.from, getTargetPosition: d => d.to,
-                    getSourceColor: [0, 255, 200], getTargetColor: [255, 0, 100],
-                    getWidth: 2,
-                    extensions: [new DataFilterExtension({filterSize: 1})],
-                    getFilterValue: d => d.time, filterRange: [currentTime, currentTime + timeWindow], 
-                    opacity: 0.8
-                }));
+            
+            // ✅ 关键修正 2：只有在 【非】实时模式下，才加载历史数据图层
+            // 如果 isRealTimeMode 为 true，layers 数组保持为空，即隐藏所有历史数据
+            if (!isRealTimeMode) {
+                if (viewMode === 'trips' && currentData.length > 0) {
+                    layers.push(new ArcLayer({
+                        id: 'taxi-arcs', data: currentData,
+                        getSourcePosition: d => d.from, getTargetPosition: d => d.to,
+                        getSourceColor: [0, 255, 200], getTargetColor: [255, 0, 100],
+                        getWidth: 2,
+                        extensions: [new DataFilterExtension({filterSize: 1})],
+                        getFilterValue: d => d.time, filterRange: [currentTime, currentTime + timeWindow], 
+                        opacity: 0.8
+                    }));
+                }
+                if (viewMode === 'hotspot' && hotspotData.length > 0) {
+                    layers.push(new HexagonLayer({
+                        id: 'heatmap', data: hotspotData,
+                        getPosition: d => d, radius: 300, elevationScale: 4, extruded: true,
+                        pickable: true, opacity: 0.8,
+                        colorRange: [[1, 152, 189], [73, 227, 206], [216, 254, 181], [254, 237, 177], [254, 173, 154], [209, 55, 78]],
+                        upperPercentile: 98
+                    }));
+                }
             }
-            if (viewMode === 'hotspot') {
-                layers.push(new HexagonLayer({
-                    id: 'heatmap', data: hotspotData,
-                    getPosition: d => d, radius: 300, elevationScale: 4, extruded: true,
-                    pickable: true, opacity: 0.8,
-                    colorRange: [[1, 152, 189], [73, 227, 206], [216, 254, 181], [254, 237, 177], [254, 173, 154], [209, 55, 78]],
-                    upperPercentile: 98
-                }));
-            }
+
             if (!deckgl) {
                 deckgl = new DeckGL({
                     container: 'container', mapboxApiAccessToken: MAPBOX_TOKEN,
                     mapStyle: 'mapbox://styles/mapbox/dark-v10',
-                    initialViewState: { longitude: -73.98, latitude: 40.75, zoom: 11, pitch: 50, bearing: -10 },
+                    viewState: currentViewState,
+                    onViewStateChange: ({viewState}) => {
+                        currentViewState = viewState;
+                        deckgl.setProps({viewState: currentViewState});
+                    },
                     controller: true, layers: layers
                 });
                 requestAnimationFrame(animate); 
-            } else { deckgl.setProps({ layers: layers }); }
+            } else { 
+                deckgl.setProps({ layers: layers, viewState: currentViewState }); 
+            }
         }
 
         function animate() {
-            if (isPlaying && viewMode === 'trips') {
+            if (isPlaying && !isRealTimeMode && viewMode === 'trips') {
                 currentTime += animationSpeed;
                 if (currentTime > 86400) currentTime = 0;
                 slider.value = currentTime;
             }
-            clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${formatTime(currentTime)}`;
-            if (deckgl && viewMode === 'trips') {
+            // 只有历史模式才显示仿真时间，实时模式显示文字提示或保持
+            if (!isRealTimeMode) {
+                clockDisplay.innerText = `${currentDateStr.replace(/-/g, '.')}  ${formatTime(currentTime)}`;
+            } else {
+                clockDisplay.innerText = "🔴 LIVE DATA STREAM";
+            }
+            
+            if (deckgl && viewMode === 'trips' && !isRealTimeMode) {
                  const currentLayers = deckgl.props.layers.map(layer => {
                      if(layer.id === 'taxi-arcs') return layer.clone({ filterRange: [currentTime, currentTime + timeWindow] });
                      return layer;
                  });
-                 deckgl.setProps({ layers: currentLayers });
+                 deckgl.setProps({ layers: currentLayers }); 
             }
             requestAnimationFrame(animate);
         }
@@ -204,30 +278,38 @@
             const m = Math.floor((seconds % 3600) / 60);
             return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
+        
         playBtn.onclick = () => { isPlaying = !isPlaying; playBtn.innerText = isPlaying ? "⏸" : "▶"; };
         slider.addEventListener('input', (e) => { currentTime = parseInt(e.target.value); });
+        
         initDateSelector();
         loadDataForDate(currentDateStr);
 
-        // --- AI 模块 (连接 Python 后端) ---
+        // --- AI ---
         const chatHistory = document.getElementById('chat-history');
         const aiInput = document.getElementById('ai-input');
         const sendBtn = document.getElementById('send-btn');
         const typingIndicator = document.getElementById('typing-indicator');
 
-        // 加载历史记录
         async function loadHistory() {
             try {
                 const res = await fetch(`${API_BASE}/chat`);
                 if(res.ok) {
                     const msgs = await res.json();
-                    msgs.forEach(m => addMessageToUI(m.content, m.role));
+                    msgs.forEach(m => {
+                         try {
+                            const clean = m.content.replace(/```json/g, "").replace(/```/g, "").trim();
+                            const j = JSON.parse(clean);
+                            if(j.text) addMessageToUI(j.text, m.role);
+                            else addMessageToUI(m.content, m.role);
+                        } catch(e) { addMessageToUI(m.content, m.role); }
+                    });
                 }
             } catch(e) {}
         }
         loadHistory();
 
-        async function askGemini() {
+        async function askAI() {
             const prompt = aiInput.value.trim();
             if (!prompt) return;
 
@@ -235,24 +317,48 @@
             aiInput.value = '';
             typingIndicator.style.display = 'block';
 
-            const contextInfo = `当前时间：${clockDisplay.innerText}。模式：${viewMode}。`;
+            const contextInfo = `当前模式：${isRealTimeMode ? '实时实景' : '历史分析'}`;
 
             try {
                 const response = await fetch(`${API_BASE}/chat_with_ai`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: prompt, context: contextInfo })
+                    body: JSON.stringify({ 
+                        message: prompt, 
+                        context: contextInfo,
+                        date: currentDateStr,
+                        mode: isRealTimeMode ? 'realtime' : 'history'
+                    })
                 });
                 const data = await response.json();
                 typingIndicator.style.display = 'none';
                 
-                if (data.reply) addMessageToUI(data.reply, 'ai');
-                else addMessageToUI("AI 无响应", 'ai');
+                if (data.reply) {
+                    try {
+                        let cleanJson = data.reply.replace(/```json/g, "").replace(/```/g, "").trim();
+                        const cmd = JSON.parse(cleanJson);
+                        if (cmd.action === "flyTo" && cmd.center) {
+                            addMessageToUI(cmd.text || "正在前往...", 'ai');
+                            currentViewState = {
+                                ...currentViewState,
+                                longitude: cmd.center[0],
+                                latitude: cmd.center[1],
+                                zoom: cmd.zoom || 13,
+                                pitch: cmd.pitch !== undefined ? cmd.pitch : currentViewState.pitch,
+                                bearing: cmd.bearing !== undefined ? cmd.bearing : currentViewState.bearing,
+                                transitionDuration: 3000,
+                                transitionInterpolator: new FlyToInterpolator()
+                            };
+                            deckgl.setProps({ viewState: currentViewState });
+                        } else { addMessageToUI(JSON.stringify(cmd), 'ai'); }
+                    } catch (e) { addMessageToUI(data.reply, 'ai'); }
+                } else { addMessageToUI("AI 服务未响应", 'ai'); }
             } catch (error) {
                 typingIndicator.style.display = 'none';
-                addMessageToUI("❌ 连接后端失败", 'ai');
+                addMessageToUI("❌ 连接失败", 'ai');
             }
         }
+        
         function addMessageToUI(text, sender) {
             const div = document.createElement('div');
             div.className = `msg ${sender}`;
@@ -260,8 +366,9 @@
             chatHistory.appendChild(div);
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
-        sendBtn.addEventListener('click', askGemini);
-        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askGemini(); });
+        
+        sendBtn.addEventListener('click', askAI);
+        aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') askAI(); });
     </script>
 </body>
 </html>
